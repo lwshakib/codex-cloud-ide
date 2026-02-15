@@ -179,6 +179,70 @@ class SocketService {
         });
       });
 
+      // --- Workspace Events ---
+      socket.on("workspace:join", async (workspaceId: string) => {
+        try {
+          console.log(`User ${userId} joining workspace ${workspaceId}`);
+          const DockerService = (await import("./docker.services")).default;
+          const { io: ioClient } = await import("socket.io-client");
+
+          const container = await DockerService.createContainer(workspaceId);
+          const inspectData = await container.inspect();
+          const ip = inspectData.NetworkSettings.Networks["app-network"]?.IPAddress;
+
+          if (!ip) {
+            return socket.emit("workspace:error", "Could not find container IP");
+          }
+
+          const containerSocket = ioClient(`http://${ip}:3001`);
+
+          containerSocket.on("connect", async () => {
+            console.log(`Connected to container for workspace ${workspaceId}`);
+            
+            // Fetch initial files from DB and populate container
+            const { prisma } = await import("./prisma.services");
+            const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+            
+            if (workspace && workspace.files) {
+              const files = workspace.files as Record<string, any>;
+              for (const [filePath, fileData] of Object.entries(files)) {
+                const content = typeof fileData === 'string' ? fileData : fileData?.content || "";
+                containerSocket.emit("fs:write", { filePath, content });
+              }
+            }
+
+            socket.emit("workspace:ready", { workspaceId });
+          });
+
+          // Proxy Terminal Events
+          containerSocket.on("terminal:data", (data) => socket.emit("terminal:data", data));
+          socket.on("terminal:input", (data) => containerSocket.emit("terminal:input", data));
+          socket.on("terminal:resize", (data) => containerSocket.emit("terminal:resize", data));
+
+          // Proxy FS Events
+          containerSocket.on("fs:list:result", (data) => socket.emit("fs:list:result", data));
+          containerSocket.on("fs:read:result", (data) => socket.emit("fs:read:result", data));
+          containerSocket.on("fs:write:success", (data) => socket.emit("fs:write:success", data));
+          containerSocket.on("fs:error", (data) => socket.emit("fs:error", data));
+
+          socket.on("fs:list", (dir) => containerSocket.emit("fs:list", dir));
+          socket.on("fs:read", (path) => containerSocket.emit("fs:read", path));
+          socket.on("fs:write", (data) => containerSocket.emit("fs:write", data));
+
+          socket.on("disconnect", () => {
+            containerSocket.disconnect();
+          });
+
+          containerSocket.on("disconnect", () => {
+            console.log(`Container socket disconnected for workspace ${workspaceId}`);
+          });
+
+        } catch (error: any) {
+          console.error("Error in workspace:join:", error);
+          socket.emit("workspace:error", error.message);
+        }
+      });
+
       socket.on("disconnect", async () => {
         console.log("A user disconnected", { socketId: socket.id, userId });
         try {

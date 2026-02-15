@@ -30,6 +30,7 @@ import CodeEditor from "@/features/editor/CodeEditor";
 import { CustomSearchBar } from "./CustomSearchBar";
 import CustomTabs from "./CustomTabs";
 import WebPreview from "./WebPreview";
+import Terminal from "./Terminal";
 import { downloadProjectAsZip } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
@@ -631,6 +632,19 @@ const RightSideView: React.FC = () => {
               responsiveMode={responsiveMode}
               reloadKey={reloadKey}
             />
+          </motion.div>
+
+          <motion.div
+            initial={false}
+            animate={{
+              opacity: activeTab === "terminal" ? 1 : 0,
+              x: activeTab === "terminal" ? 0 : 20,
+              pointerEvents: activeTab === "terminal" ? "auto" : "none",
+            }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute inset-0 h-full w-full"
+          >
+            <Terminal />
           </motion.div>
         </div>
       </div>

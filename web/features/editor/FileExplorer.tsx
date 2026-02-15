@@ -11,7 +11,7 @@ import {
   FolderPlus,
 } from "lucide-react";
 import { useWorkspaceStore } from "@/hooks/use-workspace-store";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { getFileIcon } from "./utils";
 
 type FileNode = {
@@ -154,14 +154,84 @@ export default function FileExplorer() {
     currentWorkspace,
     activeFile,
     addOpenFile,
+    updateFiles 
   } = useWorkspaceStore();
   const [activeTab, setActiveTab] = useState<"files" | "search">("files");
   const [searchQuery, setSearchQuery] = useState("");
+  const [fileTree, setFileTree] = useState<FileNode[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
 
-  const tree = useMemo(() => {
-    if (!currentWorkspace?.files) return [];
-    return transformFilesToTree(currentWorkspace.files);
+  // Initial load from store, then socket updates
+  useEffect(() => {
+    if (currentWorkspace?.files && fileTree.length === 0) {
+        setFileTree(transformFilesToTree(currentWorkspace.files));
+    }
   }, [currentWorkspace?.files]);
+
+  useEffect(() => {
+    const { socket } = require("@/lib/socket");
+
+    const onListResult = (files: any[]) => {
+        const mapToNode = (file: any): FileNode => ({
+            id: file.path,
+            name: file.name,
+            type: file.type,
+            children: file.children ? file.children.map(mapToNode) : undefined
+        });
+        const tree = files.map(mapToNode);
+        
+        // Sort nodes: folders first, then files
+        const sortNodes = (nodes: FileNode[]) => {
+            nodes.sort((a, b) => {
+                if (a.type === b.type) return a.name.localeCompare(b.name);
+                return a.type === "folder" ? -1 : 1;
+            });
+            nodes.forEach(node => {
+                if (node.children) sortNodes(node.children);
+            });
+        };
+        sortNodes(tree);
+        
+        setFileTree(tree);
+        setIsConnected(true);
+    };
+
+    const onReadResult = ({ content, filePath }: { content: string, filePath: string }) => {
+        if (!currentWorkspace) return;
+        const newFiles = { ...currentWorkspace.files };
+        // Only update if content is different to avoid loops/re-renders if not needed
+        if (newFiles[filePath]?.content !== content) {
+            newFiles[filePath] = { content };
+            // Update store without triggering a save immediately if possible, but updateFiles triggers save.
+            // That's fine, we want to sync container state to DB.
+            updateFiles(newFiles);
+        }
+    };
+
+    socket.on('fs:list:result', onListResult);
+    socket.on('fs:read:result', onReadResult);
+    socket.on('workspace:ready', () => {
+        socket.emit('fs:list', '.');
+    });
+
+    // Initial fetch if already connected
+    if (socket.connected) {
+        socket.emit('fs:list', '.');
+    }
+
+    return () => {
+        socket.off('fs:list:result', onListResult);
+        socket.off('fs:read:result', onReadResult);
+        socket.off('workspace:ready');
+    };
+  }, [currentWorkspace]);
+
+  const handleFileClick = (path: string) => {
+      addOpenFile(path);
+      // Fetch latest content from container
+      const { socket } = require("@/lib/socket");
+      socket.emit('fs:read', path);
+  };
 
   const flattenFiles = (nodes: FileNode[]): FileNode[] => {
     let result: FileNode[] = [];
@@ -176,7 +246,7 @@ export default function FileExplorer() {
     return result;
   };
 
-  const allFiles = useMemo(() => flattenFiles(tree), [tree]);
+  const allFiles = useMemo(() => flattenFiles(fileTree), [fileTree]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery) return [];
@@ -218,7 +288,7 @@ export default function FileExplorer() {
         {activeTab === "files" ? (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-              <span>Explorer</span>
+              <span>Explorer {isConnected ? '(Container)' : '(Local)'}</span>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
                 <FilePlus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
                 <FolderPlus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
@@ -226,18 +296,18 @@ export default function FileExplorer() {
             </div>
 
             <div className="flex-1 overflow-auto scrollbar-hide">
-              {tree.length === 0 && (
+              {fileTree.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-40 text-muted-foreground opacity-30 px-6 text-center">
                   <Files className="w-10 h-10 mb-2 stroke-1" />
-                  <p className="text-xs">Initialyzing project tree...</p>
+                  <p className="text-xs">Initializing project tree...</p>
                 </div>
               )}
 
-              {tree.map((node) => (
+              {fileTree.map((node) => (
                 <FileTreeItem
                   key={node.id}
                   node={node}
-                  onFileClick={addOpenFile}
+                  onFileClick={handleFileClick}
                   activeFile={activeFile}
                 />
               ))}
@@ -264,7 +334,7 @@ export default function FileExplorer() {
                 <div
                   key={file.id}
                   className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group"
-                  onClick={() => addOpenFile(file.id)}
+                  onClick={() => handleFileClick(file.id)}
                 >
                   {getFileIcon(file.name)}
                   <div className="flex flex-col min-w-0">

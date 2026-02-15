@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
-import { Code2, AppWindow } from "lucide-react";
+import { Code2, AppWindow, Terminal as TerminalIcon } from "lucide-react";
 
 interface CustomTabsProps {
-  activeTab: "code-editor" | "web-preview";
-  onTabChange: (tab: "code-editor" | "web-preview") => void;
+  activeTab: "code-editor" | "web-preview" | "terminal";
+  onTabChange: (tab: "code-editor" | "web-preview" | "terminal") => void;
 }
 
 const CustomTabs: React.FC<CustomTabsProps> = ({ activeTab, onTabChange }) => {
@@ -16,8 +16,10 @@ const CustomTabs: React.FC<CustomTabsProps> = ({ activeTab, onTabChange }) => {
         <div
           className={`absolute top-0.5 bottom-0.5 bg-primary/10 border border-primary/20 rounded-full transition-all duration-300 ease-in-out ${
             activeTab === "code-editor"
-              ? "left-0.5 w-[calc(50%-0.125rem)]"
-              : "left-[calc(50%+0.125rem)] w-[calc(50%-0.125rem)]"
+              ? "left-0.5 w-[calc(33.33%-0.125rem)]"
+              : activeTab === "web-preview"
+              ? "left-[calc(33.33%+0.125rem)] w-[calc(33.33%-0.125rem)]"
+              : "left-[calc(66.66%+0.125rem)] w-[calc(33.33%-0.125rem)]"
           }`}
         />
 
@@ -42,6 +44,17 @@ const CustomTabs: React.FC<CustomTabsProps> = ({ activeTab, onTabChange }) => {
           title="Web Preview"
         >
           <AppWindow className="w-4 h-4 transition-transform duration-200 group-hover:scale-110" />
+        </button>
+        <button
+          onClick={() => onTabChange("terminal")}
+          className={`relative px-4 py-2 text-sm font-medium transition-all duration-300 ease-in-out flex items-center justify-center gap-2 rounded-full z-10 ${
+            activeTab === "terminal"
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          title="Terminal"
+        >
+          <TerminalIcon className="w-4 h-4 transition-transform duration-200 group-hover:scale-110" />
         </button>
       </div>
     </div>
