@@ -10,11 +10,11 @@ services:
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      POSTGRES_DB: frequency-chat-app
+      POSTGRES_DB: codex-cloud-ide
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d frequency-chat-app"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d codex-cloud-ide"]
       interval: 10s
       timeout: 5s
       retries: 5

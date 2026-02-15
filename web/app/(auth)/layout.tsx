@@ -13,11 +13,19 @@ export default function AuthLayout({
 
   useEffect(() => {
     if (!isPending && session) {
-      router.push("/");
+      router.replace("/");
     }
   }, [session, isPending, router]);
 
-  if (isPending || session) {
+  if (isPending) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (session) {
     return null;
   }
 

@@ -4,6 +4,7 @@ import { prisma } from "../services/prisma.services";
 import { WEB_URL } from "../env";
 import { sendEmail } from "./email.services";
 import { SendMailEnum } from "../constants";
+import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } from "../env";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -40,8 +41,13 @@ export const auth = betterAuth({
   socialProviders: {
     google: {
       enabled: true,
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      clientId: GOOGLE_CLIENT_ID as string,
+      clientSecret: GOOGLE_CLIENT_SECRET as string,
+    },
+    github: {
+      enabled: true,
+      clientId: GITHUB_CLIENT_ID as string,
+      clientSecret: GITHUB_CLIENT_SECRET as string,
     },
   },
   account: {

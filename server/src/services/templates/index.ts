@@ -19,23 +19,23 @@ export const verifyEmailTemplate = (context: any) => ({
           </div>
           <div class="content">
             <p>Hello,</p>
-            <p>Thank you for signing up for Frequency! Please verify your email address by clicking the button below:</p>
+            <p>Thank you for signing up for Codex! Please verify your email address by clicking the button below:</p>
             <div style="text-align: center;">
               <a href="${context.url}" class="button">Verify Email Address</a>
             </div>
             <p>Or copy and paste this link into your browser:</p>
             <p style="word-break: break-all; color: #667eea;">${context.url}</p>
             <p>This link will expire in 24 hours.</p>
-            <p>If you didn't create an account with Frequency, you can safely ignore this email.</p>
+            <p>If you didn't create an account with Codex, you can safely ignore this email.</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} Frequency. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} Codex. All rights reserved.</p>
           </div>
         </div>
       </body>
     </html>
   `,
-  text: `Verify Your Email Address\n\nThank you for signing up for Frequency! Please verify your email address by clicking the link below:\n\n${context.url}\n\nThis link will expire in 24 hours.\n\nIf you didn't create an account with Frequency, you can safely ignore this email.`,
+  text: `Verify Your Email Address\n\nThank you for signing up for Codex! Please verify your email address by clicking the link below:\n\n${context.url}\n\nThis link will expire in 24 hours.\n\nIf you didn't create an account with Codex, you can safely ignore this email.`,
 });
 
 export const resetPasswordTemplate = (context: any) => ({
@@ -60,7 +60,7 @@ export const resetPasswordTemplate = (context: any) => ({
           </div>
           <div class="content">
             <p>Hello,</p>
-            <p>We received a request to reset your password for your Frequency account. Click the button below to reset it:</p>
+            <p>We received a request to reset your password for your Codex account. Click the button below to reset it:</p>
             <div style="text-align: center;">
               <a href="${context.url}" class="button">Reset Password</a>
             </div>
@@ -72,11 +72,11 @@ export const resetPasswordTemplate = (context: any) => ({
             <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} Frequency. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} Codex. All rights reserved.</p>
           </div>
         </div>
       </body>
     </html>
   `,
-  text: `Reset Your Password\n\nWe received a request to reset your password for your Frequency account. Click the link below to reset it:\n\n${context.url}\n\nThis link will expire in 1 hour for security reasons.\n\nIf you didn't request a password reset, please ignore this email or contact support if you have concerns.`,
+  text: `Reset Your Password\n\nWe received a request to reset your password for your Codex account. Click the link below to reset it:\n\n${context.url}\n\nThis link will expire in 1 hour for security reasons.\n\nIf you didn't request a password reset, please ignore this email or contact support if you have concerns.`,
 });

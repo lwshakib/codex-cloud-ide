@@ -38,12 +38,12 @@ export const sendEmail = async (purpose: SendMailEnum, context: any) => {
     let text = "";
 
     if (purpose === SendMailEnum.VERIFY_EMAIL) {
-      subject = "Verify Your Email Address - Frequency";
+      subject = "Verify Your Email Address - Codex";
       const template = verifyEmailTemplate(context);
       html = template.html;
       text = template.text;
     } else if (purpose === SendMailEnum.RESET_PASSWORD) {
-      subject = "Password Reset Request - Frequency";
+      subject = "Password Reset Request - Codex";
       const template = resetPasswordTemplate(context);
       html = template.html;
       text = template.text;
@@ -52,7 +52,7 @@ export const sendEmail = async (purpose: SendMailEnum, context: any) => {
     }
 
     const mailOptions = {
-      from: `Frequency <${process.env.GMAIL_USER || "noreply@frequency.com"}>`,
+      from: `Codex <${process.env.GMAIL_USER || "noreply@codex.com"}>`,
       to: context.to,
       subject,
       text,

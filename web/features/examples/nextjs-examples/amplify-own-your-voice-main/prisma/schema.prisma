@@ -1,0 +1,328 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  interviews    Interview[]
+  interviewSessions InterviewSession[]
+  debates       Debate[]
+  debateSessions DebateSession[]
+  customAgents  CustomAgent[]
+  customAgentSessions CustomAgentSession[]
+  marketplaceItems MarketplaceItem[]
+  marketplaceRatings MarketplaceRating[]
+  marketplaceReviews MarketplaceReview[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model MarketplaceItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @db.Text
+  type        String   // "interview" | "debate" | "ai-persona"
+  content     Json     // Stores the specific configuration
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Tracking if this item came from a specific user creation to prevent duplicate publishing
+  originalInterviewId   String?
+  originalDebateId      String?
+  originalCustomAgentId String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ratings     MarketplaceRating[]
+  reviews     MarketplaceReview[]
+
+  // Installed items
+  installedInterviews  Interview[]
+  installedDebates     Debate[]
+  installedAgents      CustomAgent[]
+
+  @@index([userId])
+  @@map("marketplace_item")
+}
+
+model MarketplaceRating {
+  id                String          @id @default(cuid())
+  value             Int             // 1-5
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketplaceItemId String
+  marketplaceItem   MarketplaceItem @relation(fields: [marketplaceItemId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+
+  @@unique([userId, marketplaceItemId])
+  @@map("marketplace_rating")
+}
+
+model MarketplaceReview {
+  id                String          @id @default(cuid())
+  content           String          @db.Text
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketplaceItemId String
+  marketplaceItem   MarketplaceItem @relation(fields: [marketplaceItemId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+
+  @@unique([userId, marketplaceItemId])
+  @@map("marketplace_review")
+}
+
+model CustomAgent {
+  id          String   @id @default(cuid())
+  name        String
+  instruction String   @db.Text
+  characterId String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions    CustomAgentSession[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  installedFromId String?
+  installedFrom   MarketplaceItem? @relation(fields: [installedFromId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("custom_agent")
+}
+
+model CustomAgentSession {
+  id              String   @id @default(cuid())
+  customAgentId   String
+  customAgent     CustomAgent @relation(fields: [customAgentId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String   @default("In Progress")
+  messages        Message[]
+  duration        Int      @default(0)
+  
+  // Metrics
+  correctness     Int      @default(0)
+  clarity         Int      @default(0)
+  relevance       Int      @default(0)
+  detail          Int      @default(0)
+  efficiency      Int      @default(0)
+  creativity      Int      @default(0)
+  communication   Int      @default(0)
+  problemSolving  Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([customAgentId])
+  @@index([userId])
+  @@map("custom_agent_session")
+}
+
+model Interview {
+  id                String             @id @default(cuid())
+  jobTitle          String
+  description       String             @db.Text
+  type              String             @default("Technical")
+  status            String             @default("Not Completed")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterId       String?            // Selected interviewer
+  interviewSessions InterviewSession[]
+
+  installedFromId   String?
+  installedFrom     MarketplaceItem? @relation(fields: [installedFromId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("interview")
+}
+
+model InterviewSession {
+  id              String   @id @default(cuid())
+  interviewId     String
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String   @default("In Progress")
+  
+  // Metrics
+  correctness     Int      @default(0)
+  clarity         Int      @default(0)
+  relevance       Int      @default(0)
+  detail          Int      @default(0)
+  efficiency      Int      @default(0)
+  creativity      Int      @default(0)
+  communication   Int      @default(0)
+  problemSolving  Int      @default(0)
+  messages        Message[]
+  duration        Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([interviewId])
+  @@index([userId])
+  @@map("interview_session")
+}
+
+model Debate {
+  id                String             @id @default(cuid())
+  subject           String             // "This house believes..."
+  content           String?            @db.Text // Extra info/context
+  status            String             @default("Not Completed")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  judgeId           String?            // Selected judge character
+  opponentId        String?            // Selected opponent character/team lead
+  debateSessions    DebateSession[]
+
+  installedFromId   String?
+  installedFrom     MarketplaceItem? @relation(fields: [installedFromId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("debate")
+}
+
+model DebateSession {
+  id              String   @id @default(cuid())
+  debateId        String
+  debate          Debate   @relation(fields: [debateId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String   @default("In Progress")
+  userSide        String?  // "PRO" (Affirmative) or "CON" (Negative)
+
+  
+  messages        Message[]
+  duration        Int      @default(0)
+  
+  // Metrics
+  correctness     Int      @default(0)
+  clarity         Int      @default(0)
+  relevance       Int      @default(0)
+  detail          Int      @default(0)
+  efficiency      Int      @default(0)
+  creativity      Int      @default(0)
+  communication   Int      @default(0)
+  problemSolving  Int      @default(0)
+
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([debateId])
+  @@index([userId])
+  @@map("debate_session")
+}
+
+model Message {
+  id               String           @id @default(cuid())
+  role             String           // "user" or "assistant"
+  content          String           @db.Text
+  feedback         String?          @db.Text
+  
+  // Per-message metrics
+  correctness      Int?
+  clarity          Int?
+  relevance        Int?
+  detail           Int?
+  efficiency       Int?
+  creativity       Int?
+  communication    Int?
+  problemSolving   Int?
+  
+  codingChallenge  Json?
+  code             String?          @db.Text
+  uiContent        String?          @db.Text
+
+  interviewSessionId String?
+  interviewSession InterviewSession? @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  
+  debateSessionId  String?
+  debateSession    DebateSession? @relation(fields: [debateSessionId], references: [id], onDelete: Cascade)
+  
+  customAgentSessionId String?
+  customAgentSession CustomAgentSession? @relation(fields: [customAgentSessionId], references: [id], onDelete: Cascade)
+  
+  speakerName      String?          // e.g., "Judge", "Opponent 1"
+  speakerTitle     String?          // e.g., "Prime Minister", "Leader of Opposition"
+  isUsersTurn      Boolean          @default(false)
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([interviewSessionId])
+  @@index([debateSessionId])
+  @@map("message")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}

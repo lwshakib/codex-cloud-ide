@@ -13,16 +13,31 @@ datasource db {
   provider = "postgresql"
 }
 
+enum AppType {
+  VITE_APP
+  NEXT_APP
+  EXPRESS_APP
+  EXPO_APP
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
+  id                String      @id
+  name              String
+  email             String
+  emailVerified     Boolean     @default(false)
+  image             String?
+  credits           Int         @default(150000)
+  lastCreditRefresh DateTime    @default(now())
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  sessions          Session[]
+  accounts          Account[]
+  workspaces        Workspace[]
 
   @@unique([email])
   @@map("user")
@@ -74,4 +89,32 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+model Workspace {
+  id            String    @id @default(cuid())
+  name          String
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app_type      AppType
+  files         Json
+  detectedPaths Json?
+  githubRepo    String?
+  messages      Message[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("workspace")
+}
+
+model Message {
+  id          String      @id @default(cuid())
+  workspaceId String
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role        MessageRole
+  parts       Json[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("message")
 }

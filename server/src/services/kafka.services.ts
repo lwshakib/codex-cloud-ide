@@ -4,7 +4,7 @@ import { prisma } from "./prisma.services";
 import { KAFKA_BROKER } from "../env";
 
 const kafka = new Kafka({
-  clientId: "frequency-chat-app",
+  clientId: "codex-cloud-ide",
   brokers: [`${KAFKA_BROKER}`],
   // ssl: {
   //   ca: process.env.KAFKA_CERTIFICATE,
