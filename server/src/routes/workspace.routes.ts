@@ -94,10 +94,21 @@ router.patch("/:id", authenticate, async (req: any, res: any) => {
 
 // Delete a workspace
 router.delete("/:id", authenticate, async (req: any, res: any) => {
+  const workspaceId = req.params.id;
   try {
     await prisma.workspace.delete({
-      where: { id: req.params.id, userId: req.user.id },
+      where: { id: workspaceId, userId: req.user.id },
     });
+
+    // Clean up container
+    try {
+        const DockerService = (await import("../services/docker.services")).default;
+        await DockerService.stopContainer(workspaceId);
+        console.log(`Container removed for workspace ${workspaceId}`);
+    } catch (dockerError) {
+        console.error("Failed to stop/remove container on deletion:", dockerError);
+    }
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete workspace" });

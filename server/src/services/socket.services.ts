@@ -24,8 +24,9 @@ class SocketService {
   constructor() {
     this._io = new Server({
       cors: {
-        origin: "*",
-        allowedHeaders: ["*"],
+        origin: process.env.WEB_URL || "http://localhost:3000",
+        methods: ["GET", "POST"],
+        credentials: true,
       },
     });
 
@@ -193,12 +194,10 @@ class SocketService {
             return socket.emit("workspace:error", "Could not get container info");
           }
 
-          // On Windows/Mac with Docker Desktop, we often need to use the host port mapping
-          // instead of the internal IP if the server is running on the host.
+          // Discover container URL
           const hostPort = inspectData.NetworkSettings.Ports["3001/tcp"]?.[0]?.HostPort;
           const ip = inspectData.NetworkSettings.Networks["app-network"]?.IPAddress;
 
-          
           let containerUrl = "";
           if (hostPort) {
             containerUrl = `http://localhost:${hostPort}`;
@@ -208,26 +207,38 @@ class SocketService {
             return socket.emit("workspace:error", "Could not find container IP or port mapping");
           }
 
-          console.log(`Connecting to container at ${containerUrl}`);
-          const containerSocket = ioClient(containerUrl);
+          console.log(`Connecting to container agent at ${containerUrl}`);
+          const containerSocket = ioClient(containerUrl, {
+            transports: ["websocket"],
+            reconnectionAttempts: 5
+          });
 
           containerSocket.on("connect", async () => {
-
-            console.log(`Connected to container for workspace ${workspaceId}`);
+            console.log(`Connected to container agent for workspace ${workspaceId}`);
             
-            // Fetch initial files from DB and populate container
+            // Sync files from DB to container
             const { prisma } = await import("./prisma.services");
             const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
             
             if (workspace && workspace.files) {
               const files = workspace.files as Record<string, any>;
+              console.log(`Syncing ${Object.keys(files).length} files to container...`);
+              
+              // We emit all writes. Ideally we'd wait for all fs:write:success, 
+              // but for now we'll just emit and signal ready.
               for (const [filePath, fileData] of Object.entries(files)) {
                 const content = typeof fileData === 'string' ? fileData : fileData?.content || "";
                 containerSocket.emit("fs:write", { filePath, content });
               }
             }
 
+            // Signal UI that workspace is ready
             socket.emit("workspace:ready", { workspaceId });
+          });
+
+          containerSocket.on("connect_error", (err) => {
+            console.error(`Container connection error for ${workspaceId}:`, err.message);
+            socket.emit("workspace:error", `Failed to connect to container agent: ${err.message}`);
           });
 
           // Proxy Terminal Events
