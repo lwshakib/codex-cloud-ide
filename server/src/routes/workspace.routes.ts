@@ -1,11 +1,14 @@
 import { Router } from "express";
 import { prisma } from "../services/prisma.services";
 import { auth } from "../services/auth.services";
+import { fromNodeHeaders } from "better-auth/node";
 const router = Router();
 
 // Middleware to check authentication
 const authenticate = async (req: any, res: any, next: any) => {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await auth.api.getSession({ 
+    headers: fromNodeHeaders(req.headers) 
+  });
   if (!session) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -38,11 +41,23 @@ router.post("/", authenticate, async (req: any, res: any) => {
         userId: req.user.id,
       },
     });
+
+    // Spin up container right away
+    try {
+        const DockerService = (await import("../services/docker.services")).default;
+        await DockerService.createContainer(workspace.id);
+        console.log(`Container created for workspace ${workspace.id}`);
+    } catch (dockerError) {
+        console.error("Failed to spin up container on creation:", dockerError);
+        // We don't fail the whole request since the DB part succeeded
+    }
+
     res.json({ workspace });
   } catch (error) {
     res.status(500).json({ error: "Failed to create workspace" });
   }
 });
+
 
 // Get a single workspace
 router.get("/:id", authenticate, async (req: any, res: any) => {

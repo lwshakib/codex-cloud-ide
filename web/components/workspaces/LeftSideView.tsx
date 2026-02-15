@@ -17,6 +17,8 @@ import { LogoIcon } from "@/components/logo";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+
 const LeftSideView: React.FC = () => {
   const router = useRouter();
   const { data: session } = authClient.useSession();
@@ -154,9 +156,10 @@ const LeftSideView: React.FC = () => {
   const submitName = async () => {
     if (nameInput.trim() && nameInput !== currentName && currentWorkspace) {
       try {
-        const response = await fetch(`/api/workspaces/${currentWorkspace.id}`, {
+        const response = await fetch(`${SERVER_URL}/api/workspaces/${currentWorkspace.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ name: nameInput.trim() }),
         });
         if (response.ok) {

@@ -1,8 +1,11 @@
 import Docker from "dockerode";
 import path from "path";
 import fs from "fs";
+import { execSync } from "child_process";
 
-const docker = new Docker(); // Defaults to /var/run/docker.sock or //./pipe/docker_engine on Windows
+const isWindows = process.platform === "win32";
+// Try default socket/pipe paths
+const docker = new Docker(isWindows ? { socketPath: "\\\\.\\pipe\\docker_engine" } : undefined);
 
 class DockerService {
   private static instance: DockerService;
@@ -17,80 +20,82 @@ class DockerService {
     return DockerService.instance;
   }
 
+  private async runCli(command: string): Promise<string> {
+      try {
+          return execSync(command, { encoding: "utf8" });
+      } catch (error: any) {
+          console.error(`CLI Command failed: ${command}`, error.message);
+          throw error;
+      }
+  }
+
   public async buildWorkingImage() {
     if (this.imageBuilt) return;
-
-    const dockerfilePath = path.resolve(__dirname, "../../../working-container");
-    console.log("Building working-container image from:", dockerfilePath);
-
-    // This is a simplified build process. In production, you'd use a more robust way.
-    // Dockerode build expect a tar stream.
-    // For now, let's assume the image 'codex-working-container' is built or will be built.
-    // Usually we would run: docker build -t codex-working-container ./working-container
     
-    // Check if image exists
-    const images = await docker.listImages();
-    const exists = images.some(img => img.RepoTags?.includes("codex-working-container:latest"));
-    
-    if (exists) {
-        this.imageBuilt = true;
-        return;
+    try {
+        const images = await this.runCli("docker images --format {{.Repository}} codex-working-container");
+        if (images.includes("codex-working-container")) {
+            this.imageBuilt = true;
+            return;
+        }
+    } catch (e) {
+        // ignore
     }
 
-    console.log("Image codex-working-container not found. Please build it manually or use this service to build it.");
-    // Building via dockerode is complex with streams, so let's just use a shell command for simplicity if possible.
+    console.log("Image codex-working-container not found. Attempting to build...");
+    const dockerfilePath = path.resolve(__dirname, "../../../working-container");
+    try {
+        this.runCli(`docker build -t codex-working-container ${dockerfilePath}`);
+        this.imageBuilt = true;
+    } catch (e) {
+        console.error("Failed to build image via CLI");
+    }
   }
 
   public async createContainer(workspaceId: string) {
     const containerName = `workspace-${workspaceId}`;
 
-    // Check if container already exists
+    // Check if container already exists via CLI (more reliable on Windows/Bun)
     try {
-        const existing = docker.getContainer(containerName);
-        await existing.inspect();
-        return existing;
+        const existing = await this.runCli(`docker ps -a --filter name=${containerName} --format {{.ID}}`);
+        if (existing.trim()) {
+            const status = await this.runCli(`docker ps -a --filter name=${containerName} --format {{.Status}}`);
+            if (!status.toLowerCase().includes("up")) {
+                await this.runCli(`docker start ${containerName}`);
+            }
+            return docker.getContainer(containerName);
+        }
     } catch (e) {
-        // Container doesn't exist, proceed to create
+        // ignore and try create
     }
 
-    const container = await docker.createContainer({
-      Image: "codex-working-container",
-      name: containerName,
-      ExposedPorts: {
-        "3001/tcp": {}
-      },
-      HostConfig: {
-        PortBindings: {
-          "3001/tcp": [{ HostPort: "0" }] // Random port or we manage them
-        },
-        NetworkMode: "app-network"
-      },
-      Env: [
-          `WORKSPACE_ID=${workspaceId}`
-      ]
-    });
-
-    await container.start();
-    return container;
+    console.log(`Creating container: ${containerName}`);
+    try {
+        // Expose 3001 (agent), 3000 (standard app), 5173 (Vite)
+        const cmd = `docker run -d --name ${containerName} --network app-network -p 0:3001 -p 0:3000 -p 0:5173 -e WORKSPACE_ID=${workspaceId} codex-working-container`;
+        await this.runCli(cmd);
+        return docker.getContainer(containerName);
+    } catch (error: any) {
+        console.error("Failed to create container:", error.message);
+        throw error;
+    }
   }
 
   public async stopContainer(workspaceId: string) {
       const containerName = `workspace-${workspaceId}`;
       try {
-          const container = docker.getContainer(containerName);
-          await container.stop();
-          await container.remove();
-      } catch (e) {
-          console.error(`Failed to stop container ${containerName}:`, e);
+          await this.runCli(`docker stop ${containerName}`);
+          await this.runCli(`docker rm ${containerName}`);
+      } catch (e: any) {
+          console.error(`Failed to stop container ${containerName}:`, e.message);
       }
   }
 
   public async getContainerInfo(workspaceId: string) {
       const containerName = `workspace-${workspaceId}`;
       try {
-          const container = docker.getContainer(containerName);
-          const data = await container.inspect();
-          return data;
+          const info = await this.runCli(`docker inspect ${containerName}`);
+          return JSON.parse(info)[0];
       } catch (e) {
           return null;
       }
@@ -98,3 +103,4 @@ class DockerService {
 }
 
 export default DockerService.getInstance();
+

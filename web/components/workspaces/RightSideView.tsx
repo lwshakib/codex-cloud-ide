@@ -1,6 +1,9 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
+
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+
 import { UserMenu } from "@/components/user-menu";
 import {
   AlertDialog,
@@ -75,7 +78,9 @@ const RightSideView: React.FC = () => {
   const fetchRepos = async () => {
     try {
       setIsLoadingRepos(true);
-      const res = await fetch("/api/github/repos");
+      const res = await fetch(`${SERVER_URL}/api/github/repos`, {
+        credentials: "include"
+      });
       const data = await res.json();
 
       if (data.error === "GitHub not connected") {
@@ -125,9 +130,10 @@ const RightSideView: React.FC = () => {
     if (!repoName.trim() || !currentWorkspace) return;
     try {
       setIsSubmitting(true);
-      const res = await fetch("/api/github/create", {
+      const res = await fetch(`${SERVER_URL}/api/github/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name: repoName.trim(),
           description: repoDescription,
@@ -163,9 +169,10 @@ const RightSideView: React.FC = () => {
     if (!currentWorkspace) return;
     try {
       if (full_name === "") setIsUnlinking(true);
-      const res = await fetch("/api/github/link", {
+      const res = await fetch(`${SERVER_URL}/api/github/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ full_name, workspaceId: currentWorkspace.id }),
       });
       const data = await res.json();
@@ -194,9 +201,10 @@ const RightSideView: React.FC = () => {
     if (!currentWorkspace) return;
     try {
       setIsDeletingRepo(true);
-      const res = await fetch("/api/github/delete", {
+      const res = await fetch(`${SERVER_URL}/api/github/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ workspaceId: currentWorkspace.id }),
       });
       const data = await res.json();

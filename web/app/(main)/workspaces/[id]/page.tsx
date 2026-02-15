@@ -45,7 +45,12 @@ export default function WorkspacePage() {
     };
 
     fetchWorkspace();
+    
+    // Join workspace socket room
+    const { socket } = require("@/lib/socket");
+    socket.emit("workspace:join", workspaceId);
   }, [workspaceId, setCurrentWorkspace, setMessages]);
+
 
   if (!mounted || loading) return null;
 

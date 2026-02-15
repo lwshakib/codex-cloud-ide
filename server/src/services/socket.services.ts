@@ -187,16 +187,32 @@ class SocketService {
           const { io: ioClient } = await import("socket.io-client");
 
           const container = await DockerService.createContainer(workspaceId);
-          const inspectData = await container.inspect();
-          const ip = inspectData.NetworkSettings.Networks["app-network"]?.IPAddress;
-
-          if (!ip) {
-            return socket.emit("workspace:error", "Could not find container IP");
+          const inspectData = await DockerService.getContainerInfo(workspaceId);
+          
+          if (!inspectData) {
+            return socket.emit("workspace:error", "Could not get container info");
           }
 
-          const containerSocket = ioClient(`http://${ip}:3001`);
+          // On Windows/Mac with Docker Desktop, we often need to use the host port mapping
+          // instead of the internal IP if the server is running on the host.
+          const hostPort = inspectData.NetworkSettings.Ports["3001/tcp"]?.[0]?.HostPort;
+          const ip = inspectData.NetworkSettings.Networks["app-network"]?.IPAddress;
+
+          
+          let containerUrl = "";
+          if (hostPort) {
+            containerUrl = `http://localhost:${hostPort}`;
+          } else if (ip) {
+            containerUrl = `http://${ip}:3001`;
+          } else {
+            return socket.emit("workspace:error", "Could not find container IP or port mapping");
+          }
+
+          console.log(`Connecting to container at ${containerUrl}`);
+          const containerSocket = ioClient(containerUrl);
 
           containerSocket.on("connect", async () => {
+
             console.log(`Connected to container for workspace ${workspaceId}`);
             
             // Fetch initial files from DB and populate container

@@ -1,5 +1,7 @@
 "use client";
 
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ExternalLink, RotateCcw, Globe, ChevronRight, Sparkles, Loader2, RefreshCw, Search, Rocket } from "lucide-react";
@@ -151,8 +153,9 @@ export const CustomSearchBar: React.FC<CustomSearchBarProps> = ({
     
     setIsAnalyzing(true);
     try {
-      const res = await fetch(`/api/workspaces/${currentWorkspace.id}/analyze-paths`, {
+      const res = await fetch(`${SERVER_URL}/api/workspaces/${currentWorkspace.id}/analyze-paths`, {
         method: "POST",
+        credentials: "include",
       });
       
       if (!res.ok) throw new Error("Failed to analyze paths");

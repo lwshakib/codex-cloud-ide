@@ -16,6 +16,7 @@ const saveToDb = async (id: string, files: any) => {
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "include",
       body: JSON.stringify({ files }),
     });
   } catch (error) {
@@ -234,6 +235,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
       const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/workspaces/${currentWorkspace.id}/github/commit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ 
             commitMessage: customMessage || "",
             changedFile 
@@ -252,7 +254,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   credits: null,
   fetchCredits: async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/user/credits`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/user/credits`, {
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         set({ credits: data.credits });

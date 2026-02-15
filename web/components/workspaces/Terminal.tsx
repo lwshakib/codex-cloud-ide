@@ -53,8 +53,7 @@ const Terminal: React.FC = () => {
         xtermRef.current = term;
         fitAddonRef.current = fitAddon;
 
-        // join workspace logic
-        socket.emit('workspace:join', currentWorkspace.id);
+        // listeners will be set up below
 
         const onTerminalData = (data: string) => {
             term.write(data);
