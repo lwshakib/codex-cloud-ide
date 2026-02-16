@@ -33,7 +33,6 @@ import CodeEditor from "@/features/editor/CodeEditor";
 import { CustomSearchBar } from "./CustomSearchBar";
 import CustomTabs from "./CustomTabs";
 import WebPreview from "./WebPreview";
-import Terminal from "./Terminal";
 import { downloadProjectAsZip } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
@@ -56,9 +55,9 @@ const RightSideView: React.FC = () => {
   // WebContainer logic removed as requested
   const previewUrl = "/"; 
   const port = null;
-  const setPort = () => {};
+  const setPort = (_port: number | null) => {};
   const instance = null;
-  const startDevServer = () => {};
+  const startDevServer = (_instance: any) => {};
   const stopDevServer = () => {};
 
   const [repos, setRepos] = useState<any[]>([]);
@@ -248,7 +247,7 @@ const RightSideView: React.FC = () => {
   const hasAutoSwitchedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (state === "ready") {
+    if ((state as string) === "ready") {
       if (!hasAutoSwitchedRef.current) {
         setActiveTab("web-preview");
         hasAutoSwitchedRef.current = true;
@@ -640,19 +639,6 @@ const RightSideView: React.FC = () => {
               responsiveMode={responsiveMode}
               reloadKey={reloadKey}
             />
-          </motion.div>
-
-          <motion.div
-            initial={false}
-            animate={{
-              opacity: activeTab === "terminal" ? 1 : 0,
-              x: activeTab === "terminal" ? 0 : 20,
-              pointerEvents: activeTab === "terminal" ? "auto" : "none",
-            }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute inset-0 h-full w-full"
-          >
-            <Terminal />
           </motion.div>
         </div>
       </div>

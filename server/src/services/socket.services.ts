@@ -19,8 +19,10 @@ const sub = new Redis({
   password: REDIS_PASSWORD,
 });
 
-class SocketService {
+export default class SocketService {
   private _io: Server;
+  private workspaceConnections = new Map<string, any>();
+
   constructor() {
     this._io = new Server({
       cors: {
@@ -30,7 +32,6 @@ class SocketService {
       },
     });
 
-    // Add authentication middleware
     this._io.use(async (socket: Socket, next: (err?: Error) => void) => {
       try {
         const session = await auth.api.getSession({
@@ -58,24 +59,13 @@ class SocketService {
       const userId = user.id;
 
       console.log("A user connected:", { socketId: socket.id, userId });
-
-      // Join personal room
       socket.join(userId);
 
-      // Handle presence update on connection
       const handleConnectionPresence = async () => {
         try {
           const ts = new Date().toISOString();
-          await produceUserPresence({
-            userId,
-            isOnline: true,
-            lastOnlineAt: ts,
-          });
-          io.emit("presence:update", {
-            userId,
-            isOnline: true,
-            lastOnlineAt: ts,
-          });
+          await produceUserPresence({ userId, isOnline: true, lastOnlineAt: ts });
+          io.emit("presence:update", { userId, isOnline: true, lastOnlineAt: ts });
         } catch (e) {
           console.error("Failed to produce presence (join)", e);
         }
@@ -86,104 +76,13 @@ class SocketService {
         await pub.publish("MESSAGES", JSON.stringify(data));
       });
 
-      socket.on("join:server", (userId: string) => {
-        console.log("User joined server in socket: ", userId);
-        socket.join(userId);
+      socket.on("join:server", (uid: string) => {
+        socket.join(uid);
       });
 
-      socket.on("delete:conversation", (payload: any) => {
-        try {
-          const { conversationId, memberIds } = payload || {};
-          if (!conversationId || !Array.isArray(memberIds)) return;
-          io.to(memberIds).emit("delete:conversation", { conversationId });
-        } catch (error) {
-          console.error("Error in delete:conversation:", error);
-        }
-      });
-
-      // Typing indicators
-      socket.on("typing:start", (payload: any) => {
-        try {
-          const { conversationId, fromUserId, toUserIds } = payload || {};
-          if (!conversationId || !fromUserId || !Array.isArray(toUserIds))
-            return;
-          io.to(toUserIds).emit("typing:start", {
-            conversationId,
-            fromUserId,
-          });
-        } catch (error) {
-          console.error("Error in typing:start:", error);
-        }
-      });
-      socket.on("typing:stop", (payload: any) => {
-        try {
-          const { conversationId, fromUserId, toUserIds } = payload || {};
-          if (!conversationId || !fromUserId || !Array.isArray(toUserIds))
-            return;
-          io.to(toUserIds).emit("typing:stop", {
-            conversationId,
-            fromUserId,
-          });
-        } catch (error) {
-          console.error("Error in typing:stop:", error);
-        }
-      });
-
-      // --- Call Events ---
-      socket.on("call:start", (payload: any) => {
-        const { conversationId, type, participants, callerId } = payload;
-        // Notify all participants except the caller
-        const targets = participants.filter(
-          (id: string) => id !== socket.data.user.id
-        );
-        io.to(targets).emit("call:invite", {
-          conversationId,
-          type,
-          participants,
-          callerId,
-        });
-      });
-
-      socket.on("call:accept", (payload: any) => {
-        const { conversationId, callerId, calleeId } = payload;
-        io.to(callerId).emit("call:accepted", { conversationId, calleeId });
-      });
-
-      socket.on("call:reject", (payload: any) => {
-        const { conversationId, callerId, calleeId } = payload;
-        io.to(callerId).emit("call:rejected", { conversationId, calleeId });
-      });
-
-      socket.on("call:hangup", (payload: any) => {
-        const { conversationId, participants, isGroup } = payload;
-        if (isGroup) {
-          // Just notify others that this specific user left
-          const targets = participants.filter(
-            (id: string) => id !== socket.data.user.id
-          );
-          io.to(targets).emit("call:participant-left", {
-            conversationId,
-            userId: socket.data.user.id,
-          });
-        } else {
-          // For 1:1, end the call for everyone
-          io.to(participants).emit("call:ended", { conversationId });
-        }
-      });
-
-      socket.on("call:signal", (payload: any) => {
-        const { conversationId, signal, toUserId, fromUserId } = payload;
-        io.to(toUserId).emit("call:signal", {
-          conversationId,
-          signal,
-          fromUserId,
-        });
-      });
-
-      // --- Workspace Events ---
       socket.on("workspace:join", async (workspaceId: string) => {
         try {
-          console.log(`User ${userId} joining workspace ${workspaceId}`);
+          console.log(`[Proxy] User ${userId} joining workspace ${workspaceId}`);
           const DockerService = (await import("./docker.services")).default;
           const { io: ioClient } = await import("socket.io-client");
 
@@ -194,7 +93,6 @@ class SocketService {
             return socket.emit("workspace:error", "Could not get container info");
           }
 
-          // Discover container URL
           const hostPort = inspectData.NetworkSettings.Ports["3001/tcp"]?.[0]?.HostPort;
           const ip = inspectData.NetworkSettings.Networks["app-network"]?.IPAddress;
 
@@ -207,103 +105,80 @@ class SocketService {
             return socket.emit("workspace:error", "Could not find container IP or port mapping");
           }
 
-          console.log(`Connecting to container agent at ${containerUrl}`);
-          const containerSocket = ioClient(containerUrl, {
-            transports: ["websocket"],
-            reconnectionAttempts: 5
+          let containerSocket = this.workspaceConnections.get(workspaceId);
+
+          if (containerSocket) {
+             console.log(`[Proxy] Reusing connection for ${workspaceId}`);
+             if (containerSocket.connected) {
+                socket.emit("workspace:ready", { workspaceId });
+             } else {
+                containerSocket.connect();
+             }
+          } else {
+            console.log(`[Proxy] Creating connection to agent at ${containerUrl}`);
+            containerSocket = ioClient(containerUrl, {
+                transports: ["websocket"],
+                reconnectionAttempts: 10,
+                autoConnect: true
+            });
+            this.workspaceConnections.set(workspaceId, containerSocket);
+
+            containerSocket.on("connect", () => {
+                console.log(`[Proxy] ✅ Dynamic connection UP for ${workspaceId}`);
+                socket.emit("workspace:ready", { workspaceId });
+            });
+
+            containerSocket.on("disconnect", () => {
+                console.log(`[Proxy] ❌ Dynamic connection DOWN for ${workspaceId}`);
+            });
+
+            containerSocket.on("terminal:data", (data: any) => socket.emit("terminal:data", data));
+            containerSocket.on("terminal:exit", (tid: string) => socket.emit("terminal:exit", tid));
+            containerSocket.on("fs:list:result", (data: any) => socket.emit("fs:list:result", data));
+            containerSocket.on("fs:read:result", (data: any) => socket.emit("fs:read:result", data));
+            containerSocket.on("fs:write:success", (data: any) => socket.emit("fs:write:success", data));
+            containerSocket.on("fs:error", (data: any) => socket.emit("fs:error", data));
+          }
+
+          socket.removeAllListeners("terminal:create");
+          socket.removeAllListeners("terminal:input");
+          socket.removeAllListeners("terminal:resize");
+          socket.removeAllListeners("terminal:kill");
+          socket.removeAllListeners("fs:list");
+          socket.removeAllListeners("fs:read");
+          socket.removeAllListeners("fs:write");
+
+          socket.on("terminal:create", (tid) => {
+             console.log(`[Proxy] Client -> Agent: terminal:create ${tid}`);
+             containerSocket.emit("terminal:create", tid);
           });
-
-          containerSocket.on("connect", async () => {
-            console.log(`Connected to container agent for workspace ${workspaceId}`);
-            
-            // Sync files from DB to container
-            const { prisma } = await import("./prisma.services");
-            const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
-            
-            if (workspace && workspace.files) {
-              const files = workspace.files as Record<string, any>;
-              console.log(`Syncing ${Object.keys(files).length} files to container...`);
-              
-              // We emit all writes. Ideally we'd wait for all fs:write:success, 
-              // but for now we'll just emit and signal ready.
-              for (const [filePath, fileData] of Object.entries(files)) {
-                const content = typeof fileData === 'string' ? fileData : fileData?.content || "";
-                containerSocket.emit("fs:write", { filePath, content });
-              }
-            }
-
-            // Signal UI that workspace is ready
-            socket.emit("workspace:ready", { workspaceId });
-          });
-
-          containerSocket.on("connect_error", (err) => {
-            console.error(`Container connection error for ${workspaceId}:`, err.message);
-            socket.emit("workspace:error", `Failed to connect to container agent: ${err.message}`);
-          });
-
-          // Proxy Terminal Events
-          containerSocket.on("terminal:data", (data) => socket.emit("terminal:data", data));
-          socket.on("terminal:input", (data) => containerSocket.emit("terminal:input", data));
-          socket.on("terminal:resize", (data) => containerSocket.emit("terminal:resize", data));
-
-          // Proxy FS Events
-          containerSocket.on("fs:list:result", (data) => socket.emit("fs:list:result", data));
-          containerSocket.on("fs:read:result", (data) => socket.emit("fs:read:result", data));
-          containerSocket.on("fs:write:success", (data) => socket.emit("fs:write:success", data));
-          containerSocket.on("fs:error", (data) => socket.emit("fs:error", data));
-
+          socket.on("terminal:input", (payload) => containerSocket.emit("terminal:input", payload));
+          socket.on("terminal:resize", (payload) => containerSocket.emit("terminal:resize", payload));
+          socket.on("terminal:kill", (tid) => containerSocket.emit("terminal:kill", tid));
           socket.on("fs:list", (dir) => containerSocket.emit("fs:list", dir));
-          socket.on("fs:read", (path) => containerSocket.emit("fs:read", path));
-          socket.on("fs:write", (data) => containerSocket.emit("fs:write", data));
-
-          socket.on("disconnect", () => {
-            containerSocket.disconnect();
-          });
-
-          containerSocket.on("disconnect", () => {
-            console.log(`Container socket disconnected for workspace ${workspaceId}`);
-          });
+          socket.on("fs:read", (p) => containerSocket.emit("fs:read", p));
+          socket.on("fs:write", (p) => containerSocket.emit("fs:write", p));
 
         } catch (error: any) {
-          console.error("Error in workspace:join:", error);
+          console.error(`[Proxy] Workspace join failed:`, error.message);
           socket.emit("workspace:error", error.message);
         }
       });
 
       socket.on("disconnect", async () => {
-        console.log("A user disconnected", { socketId: socket.id, userId });
         try {
           const ts = new Date().toISOString();
-          await produceUserPresence({
-            userId,
-            isOnline: false,
-            lastOnlineAt: ts,
-          });
-          io.emit("presence:update", {
-            userId,
-            isOnline: false,
-            lastOnlineAt: ts,
-          });
+          await produceUserPresence({ userId, isOnline: false, lastOnlineAt: ts });
+          io.emit("presence:update", { userId, isOnline: false, lastOnlineAt: ts });
         } catch (e) {
-          console.error("Failed to produce presence (disconnect)", e);
+          console.error("Failed to produce presence (leave)", e);
         }
       });
     });
-    sub.on("message", async (channel: string, data: string) => {
-      if (channel === "MESSAGES") {
-        const data2 = JSON.parse(data);
-        const users = data2.conversation?.users;
 
-        if (users.length > 0) {
-          users.forEach((user: any) => {
-            console.log("Sending message to user : ", user.id);
-            io.to(user.id).emit("message", {
-              message: data2.message,
-              conversation: data2.conversation,
-            });
-          });
-        }
-        await produceMessage(JSON.stringify({ message: data2.message }));
+    sub.on("message", (channel, message) => {
+      if (channel === "MESSAGES") {
+        io.emit("event:message", JSON.parse(message));
       }
     });
   }
@@ -312,5 +187,3 @@ class SocketService {
     return this._io;
   }
 }
-
-export default SocketService;

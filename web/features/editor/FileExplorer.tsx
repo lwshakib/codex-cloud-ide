@@ -208,11 +208,13 @@ export default function FileExplorer() {
         }
     };
 
+    const onWorkspaceReady = () => {
+        socket.emit('fs:list', '.');
+    };
+
     socket.on('fs:list:result', onListResult);
     socket.on('fs:read:result', onReadResult);
-    socket.on('workspace:ready', () => {
-        socket.emit('fs:list', '.');
-    });
+    socket.on('workspace:ready', onWorkspaceReady);
 
     // Initial fetch if already connected
     if (socket.connected) {
@@ -222,7 +224,7 @@ export default function FileExplorer() {
     return () => {
         socket.off('fs:list:result', onListResult);
         socket.off('fs:read:result', onReadResult);
-        socket.off('workspace:ready');
+        socket.off('workspace:ready', onWorkspaceReady);
     };
   }, [currentWorkspace]);
 

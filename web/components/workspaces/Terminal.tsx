@@ -79,12 +79,14 @@ const Terminal: React.FC = () => {
         const handleResize = () => {
             if (fitAddonRef.current) {
                 fitAddonRef.current.fit();
-                socket.emit('terminal:resize', {
-                    cols: term.cols,
-                    rows: term.rows,
-                });
+                debouncedEmitResize(term.cols, term.rows);
             }
         };
+
+        const { debounce } = require('lodash');
+        const debouncedEmitResize = debounce((cols: number, rows: number) => {
+            socket.emit('terminal:resize', { cols, rows });
+        }, 100);
 
         const resizeObserver = new ResizeObserver(() => {
             handleResize();

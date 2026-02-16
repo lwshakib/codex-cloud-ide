@@ -338,12 +338,29 @@ export default function WorkspacesPage() {
       setCreating(true);
       setError(null);
       setCreateError(null);
+
+      // Fetch initial files for the selected app type
+      let initialFiles = {};
+      try {
+        const starterRes = await fetch(`/api/starters?type=${appType}`);
+        if (starterRes.ok) {
+           const starterData = await starterRes.json();
+           initialFiles = starterData.files || {};
+        }
+      } catch (e) {
+        console.error("Failed to fetch starter files", e);
+      }
+
       const fallbackName = `Workspace ${new Date().toLocaleString()}`;
       const name = newWorkspaceName.trim() || fallbackName;
       const res = await fetch(`${SERVER_URL}/api/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, app_type: appType }),
+        body: JSON.stringify({ 
+            name, 
+            app_type: appType,
+            files: initialFiles 
+        }),
         credentials: "include",
       });
       if (!res.ok) {

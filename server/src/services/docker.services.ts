@@ -54,40 +54,65 @@ class DockerService {
 
   public async createContainer(workspaceId: string) {
     const containerName = `workspace-${workspaceId}`;
+    const volumeName = `vol-${workspaceId}`;
 
-    // Check if container already exists via CLI (more reliable on Windows/Bun)
+    // Ensure image is built
+    await this.buildWorkingImage();
+
+    // Check if container already exists
     try {
-        const existing = await this.runCli(`docker ps -a --filter name=${containerName} --format {{.ID}}`);
-        if (existing.trim()) {
-            const status = await this.runCli(`docker ps -a --filter name=${containerName} --format {{.Status}}`);
+        const existingId = await this.runCli(`docker ps -a --filter name=^/${containerName}$ --format {{.ID}}`);
+        if (existingId.trim()) {
+            console.log(`[Docker] Found existing container ${containerName} (${existingId.trim()})`);
+            const status = await this.runCli(`docker ps -a --filter name=^/${containerName}$ --format {{.Status}}`);
             if (!status.toLowerCase().includes("up")) {
+                console.log(`[Docker] Starting stopped container ${containerName}...`);
                 await this.runCli(`docker start ${containerName}`);
             }
             return docker.getContainer(containerName);
         }
     } catch (e) {
-        // ignore and try create
+        console.warn(`[Docker] Error checking for existing container:`, e);
     }
 
-    console.log(`Creating container: ${containerName}`);
+    console.log(`[Docker] Creating fresh container for workspace: ${containerName}`);
     try {
+        // Create volume if not exists
+        try {
+            await this.runCli(`docker volume create ${volumeName}`);
+        } catch (e) {}
+
         // Expose 3001 (agent), 3000 (standard app), 5173 (Vite)
-        const cmd = `docker run -d --name ${containerName} --network app-network -p 0:3001 -p 0:3000 -p 0:5173 -e WORKSPACE_ID=${workspaceId} codex-working-container`;
+        // Using -v for persistence across container recreations
+        const cmd = `docker run -d \
+            --name ${containerName} \
+            --network app-network \
+            -v ${volumeName}:/workspace \
+            -p 0:3001 -p 0:3000 -p 0:5173 \
+            -e WORKSPACE_ID=${workspaceId} \
+            -e NODE_ENV=development \
+            codex-working-container`;
+        
         await this.runCli(cmd);
+        console.log(`[Docker] Container ${containerName} created successfully.`);
         return docker.getContainer(containerName);
     } catch (error: any) {
-        console.error("Failed to create container:", error.message);
+        console.error(`[Docker] Critical failure creating container ${containerName}:`, error.message);
         throw error;
     }
   }
 
   public async stopContainer(workspaceId: string) {
       const containerName = `workspace-${workspaceId}`;
+      const volumeName = `vol-${workspaceId}`;
       try {
+          console.log(`[Docker] Stopping and removing container ${containerName}...`);
           await this.runCli(`docker stop ${containerName}`);
           await this.runCli(`docker rm ${containerName}`);
+          console.log(`[Docker] Removing volume ${volumeName}...`);
+          await this.runCli(`docker volume rm ${volumeName}`);
       } catch (e: any) {
-          console.error(`Failed to stop container ${containerName}:`, e.message);
+          console.error(`[Docker] Cleanup failed for ${containerName}:`, e.message);
       }
   }
 

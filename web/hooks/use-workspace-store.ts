@@ -39,7 +39,7 @@ export type Workspace = {
   messages?: any[];
 };
 
-export type TabType = "code-editor" | "web-preview" | "terminal";
+export type TabType = "code-editor" | "web-preview";
 export type StreamingStatus = "idle" | "streaming" | "finished";
 
 interface WorkspaceStore {

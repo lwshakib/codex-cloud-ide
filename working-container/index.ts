@@ -22,29 +22,97 @@ io.on('connection', (socket: Socket) => {
   console.log('Client connected to working-container');
 
   // Terminal handling
-  const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+  const shell = 'bash';
+  const shellArgs = ['-i'];
+  console.log(`[Agent] Using interactive shell: ${shell} ${shellArgs.join(' ')}`);
+  const terminals = new Map<string, pty.IPty>();
 
-  const ptyProcess = pty.spawn(shell, [], {
-    name: 'xterm-color',
-    cols: 80,
-    rows: 24,
-    cwd: WORKSPACE_DIR,
-    env: process.env as Record<string, string>
-  });
-
-  ptyProcess.on('data', (data: string) => {
-    socket.emit('terminal:data', data);
-  });
-
-  socket.on('terminal:input', (data: string) => {
-    ptyProcess.write(data);
-  });
-
-  socket.on('terminal:resize', ({ cols, rows }: { cols: number; rows: number }) => {
+  socket.on('terminal:create', (terminalId: string) => {
+    console.log(`[Agent] terminal:create received for ID: ${terminalId}`);
     try {
-        ptyProcess.resize(cols, rows);
-    } catch (e) {
+        if (terminals.has(terminalId)) {
+            console.log(`[Agent] Terminal ${terminalId} already exists, killing old one.`);
+            terminals.get(terminalId)?.kill();
+        }
+
+        const ptyProcess = pty.spawn(shell, shellArgs, {
+            name: 'xterm-256color',
+            cols: 80,
+            rows: 24,
+            cwd: WORKSPACE_DIR,
+            env: {
+                ...process.env,
+                TERM: 'xterm-256color',
+                COLORTERM: 'truecolor',
+                HOME: '/root',
+                USER: 'root'
+            } as Record<string, string>
+        });
+
+        terminals.set(terminalId, ptyProcess);
+
+        ptyProcess.onData((data: string) => {
+            if (data.length > 0) {
+                console.log(`[Agent] PTY OUT (${terminalId}): ${data.length} chars`);
+            }
+            socket.emit('terminal:data', { terminalId, data });
+        });
+
+        ptyProcess.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
+            console.log(`[Agent] PTY ${terminalId} exited with code ${exitCode}`);
+            socket.emit('terminal:exit', terminalId);
+            terminals.delete(terminalId);
+        });
+
+        console.log(`[Agent] Terminal ${terminalId} successfully spawned`);
+        socket.emit('terminal:data', {
+            terminalId,
+            data: `\r\n\x1b[32m[Agent] Shell spawned successfully (${shell})\x1b[0m\r\n`
+        });
+
+        // Heartbeat for debugging
+        const heartbeat = setInterval(() => {
+            if (terminals.has(terminalId)) {
+                // Sending a null char or empty string to keep connection alive and verify path
+                socket.emit('terminal:data', { terminalId, data: '' });
+            } else {
+                clearInterval(heartbeat);
+            }
+        }, 5000);
+    } catch (err) {
+        console.error(`[Agent] Failed to spawn terminal ${terminalId}:`, err);
+        socket.emit('terminal:data', { terminalId, data: `\r\n\x1b[31m[Agent] Failed to spawn shell: ${err}\x1b[0m\r\n` });
+    }
+  });
+
+  socket.on('terminal:input', ({ terminalId, data }: { terminalId: string; data: string }) => {
+    const ptyProcess = terminals.get(terminalId);
+    if (ptyProcess) {
+        ptyProcess.write(data);
+    } else {
+        console.warn(`[Agent] Received input for non-existent terminal: ${terminalId}`);
+    }
+  });
+
+  socket.on('terminal:resize', ({ terminalId, cols, rows }: { terminalId: string; cols: number; rows: number }) => {
+    try {
+        const ptyProcess = terminals.get(terminalId);
+        if (ptyProcess && (ptyProcess as any)._writable !== false) {
+            ptyProcess.resize(cols, rows);
+        }
+    } catch (e: any) {
+        if (e.message?.includes('EBADF') || e.message?.includes('positive')) {
+            return;
+        }
         console.error('Resize error:', e);
+    }
+  });
+
+  socket.on('terminal:kill', (terminalId: string) => {
+    const ptyProcess = terminals.get(terminalId);
+    if (ptyProcess) {
+        ptyProcess.kill();
+        terminals.delete(terminalId);
     }
   });
 
@@ -131,7 +199,8 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected from working-container');
-    ptyProcess.kill();
+    terminals.forEach((t) => t.kill());
+    terminals.clear();
   });
 });
 
